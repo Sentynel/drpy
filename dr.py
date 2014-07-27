@@ -2,7 +2,13 @@
 import argparse
 import audioop
 import math
+import os
+import pathlib
+import random
+import string
 import struct
+import subprocess
+import tempfile
 import wave
 
 parser = argparse.ArgumentParser()
@@ -62,5 +68,28 @@ def get_dr(filename):
         fdr = math.ceil(sum(drs) / len(drs))
         return fdr
 
+def convert_file(filename, tmpdir):
+    d = pathlib.Path(tmpdir)
+    while True:
+        tmpf = "".join(random.sample(string.ascii_lowercase, 6)) + ".wav"
+        if not (d / tmpf).exists():
+            break
+    tmpf = str(d / tmpf)
+    try:
+        subprocess.check_output(["avconv", "-i", filename, tmpf], stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError as e:
+        print(e.output.decode("utf8"))
+        raise
+    return tmpf
+
 if __name__ == "__main__":
-    print("\rDR:", get_dr(args.file))
+    with tempfile.TemporaryDirectory() as tmpdir:
+        if not args.file.endswith(".wav"):
+            tmpf = convert_file(args.file, tmpdir)
+            clean = True
+        else:
+            tmpf = args.file
+            clean = False
+        print("\rDR:", get_dr(tmpf))
+        if clean:
+            os.unlink(tmpf)
