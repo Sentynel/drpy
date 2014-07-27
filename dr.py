@@ -82,14 +82,18 @@ def convert_file(filename, tmpdir):
         raise
     return tmpf
 
+def dr_any(filename, tmpdir):
+    if not args.file.endswith(".wav"):
+        tmpf = convert_file(args.file, tmpdir)
+        clean = True
+    else:
+        tmpf = args.file
+        clean = False
+    dr = get_dr(tmpf)
+    if clean:
+        os.unlink(tmpf)
+    return dr
+
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as tmpdir:
-        if not args.file.endswith(".wav"):
-            tmpf = convert_file(args.file, tmpdir)
-            clean = True
-        else:
-            tmpf = args.file
-            clean = False
-        print("\rDR:", get_dr(tmpf))
-        if clean:
-            os.unlink(tmpf)
+        print("\rDR:", dr_any(args.file, tmpdir))
