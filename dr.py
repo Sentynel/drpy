@@ -1,5 +1,6 @@
 #! /usr/bin/env python3
 import argparse
+import audioop
 import math
 import struct
 import wave
@@ -13,6 +14,9 @@ to_db = lambda x: round(20*math.log(x, 10), 2)
 NORM = 2**15
 with wave.open(args.file, "rb") as f:
     channels = f.getnchannels()
+    if channels not in (1,2):
+        # TODO unpack n channels
+        raise NotImplementedError("We only handle mono or stereo at the moment")
     framesize = f.getsampwidth()
     if framesize != 2:
         # TODO map framesize to struct module constants
@@ -34,17 +38,13 @@ with wave.open(args.file, "rb") as f:
         read += 3*framerate
         print("\r{}%".format(int(100*read/total)), flush=True, end="")
         # unpack
-        samples = struct.unpack("<{}h".format(framerate*3*channels), block)
-        chansamples = [samples[i::2] for i in range(channels)]
+        if channels == 2:
+            chansamples = [audioop.tomono(block, framesize, 1, 0), audioop.tomono(block, framesize, 0, 1)]
+        else:
+            chansamples = [block]
         for i, chan in enumerate(chansamples):
-            peak = 0
-            ssum = []
-            for val in chan:
-                val = abs(val) / NORM
-                if val > peak:
-                    peak = val
-                ssum.append(val**2)
-            rms = math.sqrt(2*sum(ssum) / (3*framerate))
+            peak = audioop.max(chan, framesize) / NORM
+            rms = math.sqrt(2) * audioop.rms(chan, framesize) / NORM
             peaks[i].append(peak)
             rmss[i].append(rms)
 
@@ -59,4 +59,4 @@ with wave.open(args.file, "rb") as f:
         drs.append(dr)
     
     fdr = math.ceil(sum(drs) / len(drs))
-    print("\nDR:", fdr)
+    print("DR:", fdr)
