@@ -103,7 +103,7 @@ def convert_file(filename, tmpdir):
             break
     tmpf = str(d / tmpf)
     try:
-        subprocess.check_output(["avconv", "-i", filename, tmpf], stderr=subprocess.STDOUT)
+        subprocess.check_output(["ffmpeg", "-i", filename, tmpf], stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError as e:
         print(e.output.decode("utf8"))
         raise
