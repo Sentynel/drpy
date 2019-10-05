@@ -44,7 +44,7 @@ class SilentTrackError(Exception):
 to_db = lambda x: round(20*math.log(x, 10), 2)
 
 NORM = 2**15
-def get_dr(filename):
+def get_dr(filename, floats=False):
     with wave.open(filename, "rb") as f:
         channels = f.getnchannels()
         if channels not in (1,2):
@@ -92,7 +92,10 @@ def get_dr(filename):
             dr = -to_db(r/p2)
             drs.append(dr)
         
-        fdr = math.ceil(sum(drs) / len(drs))
+        if not floats:
+            fdr = math.ceil(sum(drs) / len(drs))
+        else:
+            fdr = sum(drs) / len(drs)
         return fdr
 
 def convert_file(filename, tmpdir):
@@ -110,7 +113,7 @@ def convert_file(filename, tmpdir):
     return tmpf
 
 errcount = 0
-def dr_any(filename, tmpdir):
+def dr_any(filename, tmpdir, floats=False):
     global errcount
     if not filename.endswith(".wav"):
         try:
@@ -122,23 +125,23 @@ def dr_any(filename, tmpdir):
     else:
         tmpf = filename
         clean = False
-    dr = get_dr(tmpf)
+    dr = get_dr(tmpf, floats)
     if clean:
         os.unlink(tmpf)
     return dr
 
-def dr_all(path, tmpdir, n=0):
+def dr_all(path, tmpdir, n=0, floats=False):
     print(n, "\r", flush=True, file=sys.stderr, end="")
     songs = {}
     p = pathlib.Path(path)
     for i in p.iterdir():
         thisdir = []
         if i.is_dir():
-            s, n = dr_all(i, tmpdir, n)
+            s, n = dr_all(i, tmpdir, n, floats)
             songs.update(s)
         elif i.suffix in (".flac", ".wav", ".mp3", ".ogg"):
             try:
-                s = dr_any(str(i), tmpdir)
+                s = dr_any(str(i), tmpdir, floats)
             except TooShortError:
                 print("Warning: too short:", str(i))
                 continue
@@ -173,12 +176,13 @@ def get_tag(filename):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("path", help="file or directory to parse")
+    parser.add_argument("-f", "--float", action="store_true", help="floating point results")
     args = parser.parse_args()
 
     with tempfile.TemporaryDirectory() as tmpdir:
         p = pathlib.Path(args.path)
         if p.is_dir():
-            songs, n = dr_all(args.path, tmpdir)
+            songs, n = dr_all(args.path, tmpdir, floats=args.float)
             with open("songs.csv", "w", newline="") as f:
                 w = csv.writer(f)
                 w.writerow(["Artist", "Date", "Album", "Track", "Title", "DR"])
@@ -192,6 +196,6 @@ if __name__ == "__main__":
                     w.writerow(t + (d,))
             print("Decoding failed on", errcount, "files.")
         else:
-            dr = dr_any(args.path, tmpdir)
+            dr = dr_any(args.path, tmpdir, floats=args.float)
             tags = get_tag(args.path)
             print(tags, dr)
