@@ -168,10 +168,18 @@ def gen_album_stats(songs):
         out[t] = math.ceil(sum(d) / len(d))
     return out
 
+def get_single_tag(tags, tag):
+    res = tags.get(tag)
+    if not res:
+        return "Unknown"
+    return res[0]
+
 def get_tag(filename):
     f = taglib.File(filename)
     tags = f.tags
-    return (tags.get("ARTIST", ["Unknown"])[0], tags.get("DATE", ["Unknown"])[0], tags.get("ALBUM", ["Unknown"])[0], tags.get("TRACKNUMBER", ["Unknown"])[0], tags.get("TITLE", ["Unknown"])[0])
+    if not tags:
+        return ("Unknown", "Unknown", "Unknown", "Unknown", filename)
+    return tuple(get_single_tag(tags, i) for i in ("ARTIST", "DATE", "ALBUM", "TRACKNUMBER", "TITLE"))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
