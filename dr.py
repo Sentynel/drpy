@@ -187,7 +187,7 @@ if __name__ == "__main__":
     parser.add_argument("-f", "--float", action="store_true", help="floating point results")
     args = parser.parse_args()
 
-    with tempfile.TemporaryDirectory() as tmpdir:
+    with tempfile.TemporaryDirectory(dir="/dev/shm/") as tmpdir:
         p = pathlib.Path(args.path)
         if p.is_dir():
             songs, n = dr_all(args.path, tmpdir, floats=args.float)
