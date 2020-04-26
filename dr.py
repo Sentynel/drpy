@@ -34,7 +34,11 @@ import sys
 import tempfile
 import wave
 
-import taglib
+import tabulate
+try:
+    import taglib
+except ImportError:
+    taglib = None
 
 class TooShortError(Exception):
     pass
@@ -112,61 +116,9 @@ def convert_file(filename, tmpdir):
         raise
     return tmpf
 
-errcount = 0
-def dr_any(filename, tmpdir, floats=False):
-    global errcount
-    if not filename.endswith(".wav"):
-        try:
-            tmpf = convert_file(filename, tmpdir)
-        except subprocess.CalledProcessError:
-            errcount += 1
-            raise
-        clean = True
-    else:
-        tmpf = filename
-        clean = False
-    dr = get_dr(tmpf, floats)
-    if clean:
-        os.unlink(tmpf)
-    return dr
-
-def dr_all(path, tmpdir, n=0, floats=False):
-    print(n, "\r", flush=True, file=sys.stderr, end="")
-    songs = {}
-    p = pathlib.Path(path)
-    for i in p.iterdir():
-        thisdir = []
-        if i.is_dir():
-            s, n = dr_all(i, tmpdir, n, floats)
-            songs.update(s)
-        elif i.suffix in (".flac", ".wav", ".mp3", ".ogg"):
-            try:
-                s = dr_any(str(i), tmpdir, floats)
-            except TooShortError:
-                print("Warning: too short:", str(i))
-                continue
-            except SilentTrackError:
-                print("Warning: silent track:", str(i))
-                continue
-            except subprocess.CalledProcessError:
-                print("Warning: failed decode:", str(i))
-                continue
-            t = get_tag(str(i))
-            songs[t] = s
-            n += 1
-    return songs, n
-
-def gen_album_stats(songs):
-    albums = {}
-    for t, d in songs.items():
-        ta = t[:3]
-        if ta not in albums:
-            albums[ta] = []
-        albums[ta].append(d)
-    out = {}
-    for t, d in albums.items():
-        out[t] = round(sum(d) / len(d))
-    return out
+def simple_summary(songs):
+    drs = [i[-1] for i in songs]
+    return round(sum(drs) / len(drs))
 
 def get_single_tag(tags, tag):
     res = tags.get(tag)
@@ -175,35 +127,97 @@ def get_single_tag(tags, tag):
     return res[0]
 
 def get_tag(filename):
-    f = taglib.File(filename)
-    tags = f.tags
-    if not tags:
-        return ("Unknown", "Unknown", "Unknown", "Unknown", filename)
-    return tuple(get_single_tag(tags, i) for i in ("ARTIST", "DATE", "ALBUM", "TRACKNUMBER", "TITLE"))
+    if taglib:
+        f = taglib.File(filename)
+        tags = f.tags
+        if not tags:
+            return ("Unknown", "Unknown", "Unknown", "Unknown", filename)
+        items = [get_single_tag(tags, i) for i in ("ARTIST", "DATE", "ALBUM", "TRACKNUMBER", "TITLE")]
+        items[3] = int(items[3])
+        return tuple(items)
+    return (filename)
+
+def format_results(errs, results):
+    res = ""
+    if errs:
+        res = "\n".join(errs) + "\n\n"
+    if taglib:
+        hdrs = ["Artist", "Date", "Album", "Track", "Title", "DR"]
+    else:
+        hdrs = ["File", "DR"]
+    res += tabulate.tabulate(results, headers=hdrs)
+    overall = simple_summary(results)
+    res += "\n\nOverall: DR{}".format(overall)
+    return res
+
+def get_results(items, progress, floats=False):
+    res = []
+    errs = []
+    n = 0
+    with tempfile.TemporaryDirectory() as td:
+        for i in items:
+            t = get_tag(str(i))
+            rm = None
+            if i.suffix != ".wav":
+                try:
+                    p = convert_file(i, td)
+                except subprocess.CalledProcessError:
+                    errs.append("Warning: decoding failed on: " + str(i))
+                    continue
+                rm = p
+            else:
+                p = str(i)
+            try:
+                dr = get_dr(p, floats)
+            except TooShortError:
+                errs.append("Warning: too short: " + str(i))
+                continue
+            except SilentTrackError:
+                errs.append("Warning: silent track: " + str(i))
+                continue
+            except NotImplementedError as e:
+                errs.append("Warning: " + str(e) + ": " + str(i))
+                continue
+            finally:
+                if rm:
+                    os.unlink(rm)
+            n += 1
+            progress(n, len(items))
+            res.append(t + (dr,))
+    return errs, sorted(res)
+
+def get_files(path, recurse=False):
+    res = []
+    for i in path.iterdir():
+        if i.is_dir():
+            if recurse:
+                res.extend(get_files(i, True))
+        elif i.suffix in (".flac", ".wav", ".mp3", ".ogg", ".m4a"):
+            res.append(i)
+    return res
+
+def do_cmdline(args):
+    path = pathlib.Path(args.path)
+    if not path.exists():
+        print("error: path does not exist")
+        return
+    if path.is_file():
+        items = [path]
+    else:
+        items = get_files(path)
+    prog = lambda i, n: print(".", end="", flush=True)
+    errs, results = get_results(items, prog, args.float)
+    print()
+    fmt = format_results(errs, results)
+    print(fmt)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("path", help="file or directory to parse")
-    parser.add_argument("-f", "--float", action="store_true", help="floating point results")
+    parser.add_argument("path", help="file or directory to measure", nargs="?", default=None)
+    parser.add_argument("-f", "--float", action="store_true", help="floating point results (nonstandard)")
     args = parser.parse_args()
 
-    with tempfile.TemporaryDirectory(dir="/dev/shm/") as tmpdir:
-        p = pathlib.Path(args.path)
-        if p.is_dir():
-            songs, n = dr_all(args.path, tmpdir, floats=args.float)
-            with open("songs.csv", "w", newline="") as f:
-                w = csv.writer(f)
-                w.writerow(["Artist", "Date", "Album", "Track", "Title", "DR"])
-                for t, d in sorted(songs.items()):
-                    w.writerow(t + (d,))
-            albums = gen_album_stats(songs)
-            with open("albums.csv", "w", newline="") as f:
-                w = csv.writer(f)
-                w.writerow(["Artist", "Date", "Album", "DR"])
-                for t, d in albums.items():
-                    w.writerow(t + (d,))
-            print("Decoding failed on", errcount, "files.")
-        else:
-            dr = dr_any(args.path, tmpdir, floats=args.float)
-            tags = get_tag(args.path)
-            print(tags, dr)
+    if args.path is None:
+        do_gui(args)
+    else:
+        do_cmdline(args)
