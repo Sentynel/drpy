@@ -35,8 +35,7 @@ import sys
 import tempfile
 import threading
 import tkinter as tk
-from tkinter import filedialog
-from tkinter import scrolledtext
+from tkinter import filedialog, scrolledtext, ttk
 import wave
 
 import tabulate
@@ -133,14 +132,14 @@ def get_single_tag(tags, tag):
 
 def get_tag(filename):
     if taglib:
-        f = taglib.File(filename)
+        f = taglib.File(str(filename))
         tags = f.tags
         if not tags:
             return ("Unknown", "Unknown", "Unknown", "Unknown", filename)
         items = [get_single_tag(tags, i) for i in ("ARTIST", "DATE", "ALBUM", "TRACKNUMBER", "TITLE")]
         items[3] = int(items[3])
         return tuple(items)
-    return (filename)
+    return (filename.name,)
 
 def format_results(errs, results):
     res = ""
@@ -161,7 +160,7 @@ def get_results(items, progress, floats=False):
     n = 0
     with tempfile.TemporaryDirectory() as td:
         for i in items:
-            t = get_tag(str(i))
+            t = get_tag(i)
             rm = None
             if i.suffix != ".wav":
                 try:
@@ -218,7 +217,7 @@ def do_cmdline(args):
 
 def proc_thread(path, q):
     items = get_files(path)
-    prog = lambda i, n: q.put(".")
+    prog = lambda i, n: q.put((n, i))
     errs, results = get_results(items, prog, args.float)
     fmt = format_results(errs, results)
     q.put("\n" + fmt)
@@ -228,21 +227,29 @@ def gui_get_path(q):
     thread = threading.Thread(target=proc_thread, args=(path, q))
     thread.start()
 
-def gui_check_queue(q, text):
+def gui_check_queue(q, text, prog):
     try:
         msg = q.get(False)
     except queue.Empty:
         pass
     else:
-        text.insert(tk.END, msg)
-    text.after(100, gui_check_queue, q, text)
+        if isinstance(msg, tuple):
+            prog["maximum"] = msg[0]
+            prog["value"] = msg[1]
+        elif isinstance(msg, str):
+            text.insert(tk.END, msg)
+    text.after(100, gui_check_queue, q, text, prog)
 
 def do_gui(args):
     q = queue.Queue()
-    text = scrolledtext.ScrolledText()
+    root = tk.Tk()
+    root.winfo_toplevel().title("DR tool")
+    prog = ttk.Progressbar(length=800)
+    prog.pack()
+    text = scrolledtext.ScrolledText(width=100)
     text.pack()
     text.after(100, gui_get_path, q)
-    text.after(200, gui_check_queue, q, text)
+    text.after(200, gui_check_queue, q, text, prog)
     tk.mainloop()
 
 
