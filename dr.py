@@ -26,12 +26,17 @@ import csv
 import math
 import os
 import pathlib
+import queue
 import random
 import string
 import struct
 import subprocess
 import sys
 import tempfile
+import threading
+import tkinter as tk
+from tkinter import filedialog
+from tkinter import scrolledtext
 import wave
 
 import tabulate
@@ -210,6 +215,36 @@ def do_cmdline(args):
     print()
     fmt = format_results(errs, results)
     print(fmt)
+
+def proc_thread(path, q):
+    items = get_files(path)
+    prog = lambda i, n: q.put(".")
+    errs, results = get_results(items, prog, args.float)
+    fmt = format_results(errs, results)
+    q.put("\n" + fmt)
+
+def gui_get_path(q):
+    path = pathlib.Path(filedialog.askdirectory())
+    thread = threading.Thread(target=proc_thread, args=(path, q))
+    thread.start()
+
+def gui_check_queue(q, text):
+    try:
+        msg = q.get(False)
+    except queue.Empty:
+        pass
+    else:
+        text.insert(tk.END, msg)
+    text.after(100, gui_check_queue, q, text)
+
+def do_gui(args):
+    q = queue.Queue()
+    text = scrolledtext.ScrolledText()
+    text.pack()
+    text.after(100, gui_get_path, q)
+    text.after(200, gui_check_queue, q, text)
+    tk.mainloop()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
