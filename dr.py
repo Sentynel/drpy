@@ -93,7 +93,7 @@ def get_dr(filename, floats=False):
             drs.append(dr)
         
         if not floats:
-            fdr = math.ceil(sum(drs) / len(drs))
+            fdr = round(sum(drs) / len(drs))
         else:
             fdr = sum(drs) / len(drs)
         return fdr
@@ -165,7 +165,7 @@ def gen_album_stats(songs):
         albums[ta].append(d)
     out = {}
     for t, d in albums.items():
-        out[t] = math.ceil(sum(d) / len(d))
+        out[t] = round(sum(d) / len(d))
     return out
 
 def get_single_tag(tags, tag):
