@@ -28,6 +28,7 @@ import os
 import pathlib
 import queue
 import random
+import shutil
 import string
 import struct
 import subprocess
@@ -36,6 +37,7 @@ import tempfile
 import threading
 import tkinter as tk
 from tkinter import filedialog, scrolledtext, ttk
+import traceback
 import wave
 
 import tabulate
@@ -113,14 +115,20 @@ def convert_file(filename, tmpdir):
         if not (d / tmpf).exists():
             break
     tmpf = str(d / tmpf)
+    ffmpeg_path = shutil.which("ffmpeg")
+    if not ffmpeg_path:
+        bundle_dir = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+        ffmpeg_path = os.path.join(bundle_dir, "assets", "ffmpeg")
     try:
-        subprocess.check_output(["ffmpeg", "-i", filename, tmpf], stderr=subprocess.STDOUT)
+        subprocess.check_output([ffmpeg_path, "-i", filename, tmpf], stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError as e:
         print(e.output.decode("utf8"))
         raise
     return tmpf
 
 def simple_summary(songs):
+    if not songs:
+        return 0
     drs = [i[-1] for i in songs]
     return round(sum(drs) / len(drs))
 
@@ -216,14 +224,20 @@ def do_cmdline(args):
     print(fmt)
 
 def proc_thread(path, q):
-    items = get_files(path)
-    prog = lambda i, n: q.put((n, i))
-    errs, results = get_results(items, prog, args.float)
-    fmt = format_results(errs, results)
-    q.put("\n" + fmt)
+    try:
+        items = get_files(path)
+        prog = lambda i, n: q.put((n, i))
+        errs, results = get_results(items, prog, args.float)
+        fmt = format_results(errs, results)
+        q.put("\n" + fmt)
+    except Exception as e:
+        msg = traceback.format_exc()
+        q.put("Unexpected error, please report:\n" + msg)
 
-def gui_get_path(q):
-    path = pathlib.Path(filedialog.askdirectory())
+def gui_get_path(q, path=None):
+    if path is None:
+        path = filedialog.askdirectory()
+    path = pathlib.Path(path)
     thread = threading.Thread(target=proc_thread, args=(path, q))
     thread.start()
 
@@ -248,7 +262,7 @@ def do_gui(args):
     prog.pack()
     text = scrolledtext.ScrolledText(width=100)
     text.pack()
-    text.after(100, gui_get_path, q)
+    text.after(100, gui_get_path, q, args.path)
     text.after(200, gui_check_queue, q, text, prog)
     tk.mainloop()
 
@@ -257,9 +271,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("path", help="file or directory to measure", nargs="?", default=None)
     parser.add_argument("-f", "--float", action="store_true", help="floating point results (nonstandard)")
+    parser.add_argument("-c", "--cmd", action="store_true", help="don't show gui")
     args = parser.parse_args()
 
-    if args.path is None:
-        do_gui(args)
-    else:
+    if args.cmd and args.path:
         do_cmdline(args)
+    else:
+        do_gui(args)

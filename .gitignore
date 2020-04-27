@@ -4,3 +4,6 @@
 *.ogg
 *.mp3
 *.csv
+build/
+dist/
+dr.spec
