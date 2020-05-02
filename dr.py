@@ -23,6 +23,7 @@
 import argparse
 import audioop
 import csv
+import functools
 import math
 import os
 import pathlib
@@ -34,8 +35,6 @@ import subprocess
 import sys
 import tempfile
 import threading
-import tkinter as tk
-from tkinter import filedialog, scrolledtext, ttk
 import wave
 
 import tabulate
@@ -223,35 +222,48 @@ def proc_thread(path, q):
     q.put("\n" + fmt)
 
 def gui_get_path(q):
-    path = pathlib.Path(filedialog.askdirectory())
+    import plyer
+    d = plyer.filechooser.choose_dir()
+    if not d:
+        return
+    path = pathlib.Path(d[0])
     thread = threading.Thread(target=proc_thread, args=(path, q))
     thread.start()
 
-def gui_check_queue(q, text, prog):
+def gui_check_queue(q, app, dt):
     try:
         msg = q.get(False)
     except queue.Empty:
         pass
     else:
         if isinstance(msg, tuple):
-            prog["maximum"] = msg[0]
-            prog["value"] = msg[1]
+            app.prog.max = msg[0]
+            app.prog.value = msg[1]
         elif isinstance(msg, str):
-            text.insert(tk.END, msg)
-    text.after(100, gui_check_queue, q, text, prog)
+            app.text.text += msg
+            app.layout.do_layout()
 
 def do_gui(args):
-    q = queue.Queue()
-    root = tk.Tk()
-    root.winfo_toplevel().title("DR tool")
-    prog = ttk.Progressbar(length=800)
-    prog.pack()
-    text = scrolledtext.ScrolledText(width=100)
-    text.pack()
-    text.after(100, gui_get_path, q)
-    text.after(200, gui_check_queue, q, text, prog)
-    tk.mainloop()
+    from kivy.app import App
+    from kivy.clock import Clock
+    from kivy.uix.boxlayout import BoxLayout
+    from kivy.uix.textinput import TextInput
+    from kivy.uix.progressbar import ProgressBar
+    class GUI(App):
+        def build(self):
+            self.title = "DR tool"
+            self.layout = BoxLayout(orientation="vertical")
+            self.prog = ProgressBar(size_hint=(1,.1))
+            self.layout.add_widget(self.prog)
+            self.text = TextInput(readonly=True, font_name="RobotoMono-Regular")
+            self.layout.add_widget(self.text)
+            return self.layout
 
+    q = queue.Queue()
+    gui_get_path(q)
+    app = GUI()
+    Clock.schedule_interval(functools.partial(gui_check_queue, q, app), 0.1)
+    app.run()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
