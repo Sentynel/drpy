@@ -27,6 +27,7 @@ import functools
 import math
 import os
 import pathlib
+import platform
 import queue
 import random
 import shutil
@@ -114,12 +115,17 @@ def convert_file(filename, tmpdir):
         if not (d / tmpf).exists():
             break
     tmpf = str(d / tmpf)
-    ffmpeg_path = shutil.which("ffmpeg")
+    ffmpeg_name = "ffmpeg"
+    args = {}
+    if platform.system() == "Windows":
+        ffmpeg_name += ".exe"
+        args["creationflags"] = subprocess.CREATE_NO_WINDOW
+    ffmpeg_path = shutil.which(ffmpeg_name)
     if not ffmpeg_path:
         bundle_dir = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
-        ffmpeg_path = os.path.join(bundle_dir, "assets", "ffmpeg")
+        ffmpeg_path = os.path.join(bundle_dir, "assets", ffmpeg_name)
     try:
-        subprocess.check_output([ffmpeg_path, "-i", filename, tmpf], stderr=subprocess.STDOUT)
+        subprocess.check_output([ffmpeg_path, "-i", str(filename), tmpf], stderr=subprocess.STDOUT, stdin=subprocess.PIPE, **args)
     except subprocess.CalledProcessError as e:
         print(e.output.decode("utf8"))
         raise
