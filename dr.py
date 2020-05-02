@@ -143,9 +143,14 @@ def get_tag(filename):
         f = taglib.File(str(filename))
         tags = f.tags
         if not tags:
-            return ("Unknown", "Unknown", "Unknown", "Unknown", filename)
+            return ("Unknown", "Unknown", "Unknown", "Unknown", filename.name)
         items = [get_single_tag(tags, i) for i in ("ARTIST", "DATE", "ALBUM", "TRACKNUMBER", "TITLE")]
-        items[3] = int(items[3])
+        try:
+            items[3] = int(items[3])
+        except ValueError:
+            pass
+        # trim to just year
+        items[1] = str(items[1])[:4]
         return tuple(items)
     return (filename.name,)
 
